@@ -16,36 +16,45 @@ Loan Default Prediction Dataset (Kaggle).
 
 ```
 credit-risk-scoring/
+├── app/
+│   └── simulateur_scoring_credit.html # Simulateur Web (Régression Logistique)
 ├── data/
-│   ├── raw/              # Loan_default.csv (dataset original, jamais modifié)
-│   └── processed/        # jeux de données nettoyés / transformés
-├── notebooks/             # notebooks d'exploration et de modélisation
+│   ├── raw/              # Loan_default.csv (dataset original)
+│   └── processed/        # Données avec Risk Index après pipeline
+├── models/               # Modèles entraînés (.pkl et .json pour l'app web)
+├── notebooks/            # Notebooks d'exploration
 ├── src/
-│   ├── data/              # scripts de chargement / préparation des données
-│   ├── features/          # scripts de feature engineering
-│   └── models/            # scripts d'entraînement / évaluation des modèles
+│   ├── main_pipeline.py      # 🚀 SCRIPT FINAL : Bout-en-bout (Features, Train, Export)
+│   └── exploration_scoring.py # Script d'analyse (Univariée, Bivariée, ACP, ML)
 ├── reports/
-│   └── figures/           # graphiques générés pour le rapport
-├── docs/                  # notes, synthèse de littérature, etc.
+│   └── figures/          # Graphiques d'analyse générés automatiquement
+├── docs/                 # Documentation
 ├── requirements.txt
 └── README.md
 ```
 
-## Installation
+## Installation & Exécution (Projet Final)
 
+1. Créer l'environnement virtuel et installer les dépendances :
 ```bash
-python3 -m venv venv
-source venv/bin/activate        # Windows : venv\Scripts\activate
-pip install --upgrade pip
+python -m venv venv
+# Windows : venv\Scripts\activate
+# Mac/Linux : source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Vérification :
-
+2. **Lancer le Pipeline Final** : 
+Le script `main_pipeline.py` exécute le Feature Engineering, entraîne les modèles (Random Forest et Régression Logistique), calcule l'indice de risque et sauvegarde les livrables dans `models/` et `data/processed/`.
 ```bash
-python3 -c "import pandas, numpy, matplotlib, seaborn, sklearn; print('OK')"
+cd src
+python main_pipeline.py
 ```
 
-## Avancement
+3. **Générer les Visuels d'Exploration** (Analyse de la relation variables/risque) :
+```bash
+python exploration_scoring.py
+```
 
-Voir `Chronogramme_PAEI_Gehmit.xlsx` pour le suivi séance par séance.
+## Avancement & Finalisation
+✅ Le projet est **terminé**. Le workflow complet est automatisé.
+✅ L'application Web de simulation (`app/simulateur_scoring_credit.html`) intègre directement les poids du modèle issu du pipeline, permettant d'avoir une décision immédiate et hautement interprétable sur l'acceptation ou le refus d'un crédit.
