@@ -1,107 +1,88 @@
-import os
-import json
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+import joblib
+import json
+import os
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
-import joblib
-import warnings
-
-warnings.filterwarnings('ignore')
+from sklearn.metrics import roc_auc_score
 
 def run_pipeline():
-    print("🚀 Début du Pipeline Final de Credit Risk Scoring...")
+    print("[DEBUT] Pipeline Final de Credit Risk Scoring (Nouvelle Architecture)...")
     
-    # 1. Configuration et chemins
-    DATA_RAW = "../data/raw/Loan_default.csv"
-    DATA_PROC = "../data/processed/Loan_default_scored.csv"
-    MODELS_DIR = "../models/"
-    REPORTS_DIR = "../reports/figures/"
+    # 1. Chargement des données
+    print("Chargement des donnees brutes...")
+    data_path = 'data/raw/Loan_default.csv'
+    df = pd.read_csv(data_path)
     
-    for d in ["../data/processed", MODELS_DIR, REPORTS_DIR]:
-        os.makedirs(d, exist_ok=True)
-        
-    # 2. Chargement des données
-    print("⏳ Chargement des données brutes...")
-    df = pd.read_csv(DATA_RAW)
-    df = df.drop(columns=['LoanID'])
+    # 2. Périmètre strict : 8 variables explicatives + Cible
+    cols_features = ['Age', 'Income', 'LoanAmount', 'MonthsEmployed', 'NumCreditLines', 'InterestRate', 'LoanTerm', 'DTIRatio']
     
-    num_cols = df.select_dtypes(include=['int64', 'float64']).columns.drop('Default').tolist()
+    X = df[cols_features]
+    y = df['Default']
     
-    # 3. Création des variables synthétiques (Feature Engineering)
-    print("⚙️ Feature Engineering...")
-    df['AgeEmploymentIncoherent'] = (df['MonthsEmployed'] > (df['Age'] - 16) * 12).astype(int)
-    df['LoanToIncomeRatio'] = df['LoanAmount'] / df['Income']
-    
-    # 4. Encodage et Préparation pour le Machine Learning
-    df_encoded = pd.get_dummies(df, drop_first=True)
-    X = df_encoded.drop(columns=['Default'])
-    y = df_encoded['Default']
-    
+    # 3. Split Train/Test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
-    # 5. Entraînement du Modèle Random Forest (Pour l'analyse d'importance)
-    print("🌲 Entraînement du modèle Random Forest...")
-    rf = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
-    rf.fit(X_train, y_train)
-    rf_auc = roc_auc_score(y_test, rf.predict_proba(X_test)[:, 1])
-    print(f"✅ Random Forest AUC: {rf_auc:.4f}")
-    
-    # Sauvegarde de l'importance des variables
-    importances = rf.feature_importances_
-    indices = np.argsort(importances)[::-1][:10]
-    
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x=importances[indices], y=X.columns[indices], palette="viridis")
-    plt.title("Top 10 des Variables (Random Forest)", fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    plt.savefig(os.path.join(REPORTS_DIR, "feature_importance_rf.png"), dpi=300)
-    plt.close()
-    
-    # 6. Entraînement de la Régression Logistique (Pour l'interface Web / API)
-    print("📈 Entraînement du modèle de Régression Logistique (Production)...")
+    # 4. Standardisation (Z-Score)
+    print("Normalisation des donnees...")
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
-    lr = LogisticRegression(C=100, random_state=42)
-    lr.fit(X_train_scaled, y_train)
-    lr_auc = roc_auc_score(y_test, lr.predict_proba(X_test_scaled)[:, 1])
-    print(f"✅ Logistic Regression AUC: {lr_auc:.4f}")
+    # 5. Entraînement du Random Forest
+    print("Entrainement du modele Random Forest...")
+    rf_model = RandomForestClassifier(n_estimators=50, max_depth=7, random_state=42)
+    rf_model.fit(X_train_scaled, y_train)
     
-    # 7. Génération de l'Indice de Risque (Scoring global)
-    print("📊 Création des Indices de Risque Finaux...")
-    # Indice ML (basé sur RF)
-    df['RiskIndex_ML'] = rf.predict_proba(X)[:, 1] * 100
+    rf_auc = roc_auc_score(y_test, rf_model.predict_proba(X_test_scaled)[:, 1])
+    print(f"[OK] Random Forest AUC: {rf_auc:.4f}")
     
-    # 8. Sauvegarde des modèles et des données traitées
-    print("💾 Sauvegarde des livrables...")
-    joblib.dump(rf, os.path.join(MODELS_DIR, "random_forest_model.pkl"))
-    joblib.dump(lr, os.path.join(MODELS_DIR, "logistic_regression_model.pkl"))
-    joblib.dump(scaler, os.path.join(MODELS_DIR, "scaler.pkl"))
+    # 6. Entraînement de la Régression Logistique
+    print("Entrainement du modele de Regression Logistique (Production)...")
+    lr_model = LogisticRegression(random_state=42)
+    lr_model.fit(X_train_scaled, y_train)
     
-    df.to_csv(DATA_PROC, index=False)
+    lr_auc = roc_auc_score(y_test, lr_model.predict_proba(X_test_scaled)[:, 1])
+    print(f"[OK] Logistic Regression AUC: {lr_auc:.4f}")
     
-    # Extraction des poids pour l'application Web Javascript
-    js_model_weights = {
-        "columns": list(X.columns),
-        "mean": list(scaler.mean_),
-        "scale": list(scaler.scale_),
-        "coef": list(lr.coef_[0]),
-        "intercept": lr.intercept_[0]
+    # 7. Sauvegarde des modèles, du Scaler, ET du nouveau dataset score
+    print("Sauvegarde des livrables...")
+    os.makedirs('models', exist_ok=True)
+    os.makedirs('data/processed', exist_ok=True)
+    
+    joblib.dump(scaler, 'models/scaler.pkl')
+    joblib.dump(rf_model, 'models/random_forest_model.pkl')
+    joblib.dump(lr_model, 'models/logistic_regression_model.pkl')
+    
+    # Creation de la colonne AI_Credit_Score dans le dataset pour les livrer
+    proba_defaut = rf_model.predict_proba(X_scaled)[:, 1] if 'X_scaled' in locals() else rf_model.predict_proba(scaler.fit_transform(X))[:, 1]
+    # On utilise toutes les donnees X pour generer le fichier final
+    proba_full = rf_model.predict_proba(scaler.transform(X))[:, 1]
+    
+    # INDICE DE RISQUE PUR (0 à 1000)
+    # 0 = Aucun risque / 1000 = Risque maximal
+    df['AI_Risk_Index'] = (proba_full * 1000).round().astype(int)
+    
+    df.to_csv('data/processed/Loan_default_scored_AI.csv', index=False)
+    print("Dataset avec AI_Credit_Score sauvegarde dans data/processed/")
+    
+    # 8. Exportation des Poids pour le Front-End (Web)
+    # On exporte la moyenne et l'échelle du StandardScaler, et les coefficients de la LogReg
+    js_weights = {
+        "columns": cols_features,
+        "mean": scaler.mean_.tolist(),
+        "scale": scaler.scale_.tolist(),
+        "coef": lr_model.coef_[0].tolist(),
+        "intercept": lr_model.intercept_[0]
     }
-    with open(os.path.join(MODELS_DIR, "js_model_weights.json"), "w") as f:
-        json.dump(js_model_weights, f)
+    
+    with open('models/js_model_weights.json', 'w') as f:
+        json.dump(js_weights, f, indent=2)
         
-    print(f"✅ Modèles sauvegardés dans {MODELS_DIR}")
-    print(f"✅ Données scorees sauvegardées dans {DATA_PROC}")
-    print("🎉 PIPELINE TERMINÉ AVEC SUCCÈS !")
+    print("[FIN] PIPELINE TERMINE AVEC SUCCES !")
 
 if __name__ == "__main__":
     run_pipeline()
